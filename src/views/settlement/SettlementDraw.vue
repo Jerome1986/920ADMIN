@@ -28,7 +28,6 @@ const emit = defineEmits(['update:modelValue', 'confirm'])
 const direction = ref<DrawerProps['direction']>('rtl')
 
 // 结算表单数据
-const settlementAmount = ref(0)
 const settlementRemark = ref('')
 
 // 上传凭证
@@ -38,7 +37,6 @@ const receiptFiles = ref<string>()
 const handleClose = () => {
   emit('update:modelValue', false)
   // 重置表单数据
-  settlementAmount.value = 0
   settlementRemark.value = ''
   receiptFiles.value = ''
 }
@@ -69,8 +67,10 @@ const handleUploadError = (error: Error) => {
 
 // 预览文件
 const dialogVisible = ref(false)
+const previewImg = ref('')
 const handlePictureCardPreview: UploadProps['onPreview'] = (uploadFile) => {
-  receiptFiles.value = uploadFile.url!
+  previewImg.value = uploadFile.url!
+  console.log('预览文件', receiptFiles.value)
   dialogVisible.value = true
 }
 
@@ -82,7 +82,7 @@ const handleConfirmSettlement = () => {
     out_trade_no: props.userData.out_trade_no,
     userId: props.userData.userId,
     mobile: props.userData.mobile,
-    amount: settlementAmount.value,
+    amount: props.userData.should_settlement_amount,
     remark: settlementRemark.value,
     receiptFiles: receiptFiles.value,
     settlementStatus: props.userData.settlementStatus
@@ -120,7 +120,7 @@ const handleConfirmSettlement = () => {
         <div class="settlement-card">
           <div class="settlement-item total">
             <span class="item-label">待结算金额：</span>
-            <span class="item-value">¥{{ formatAmount(userData.amount) }}</span>
+            <span class="item-value">¥{{ formatAmount(userData.actual_settlement_amount) }}</span>
           </div>
         </div>
       </div>
@@ -129,21 +129,6 @@ const handleConfirmSettlement = () => {
       <div class="operation-section">
         <div class="section-title">结算操作</div>
         <div class="operation-form">
-          <!-- 结算金额输入 -->
-          <div class="form-item">
-            <label class="form-label">结算金额：</label>
-            <el-input-number
-              v-model="settlementAmount"
-              :min="0"
-              :max="Number(userData.amount / 100)"
-              :precision="2"
-              :step="0.01"
-              placeholder="请输入结算金额"
-              style="width: 200px"
-            />
-            <span class="unit">元</span>
-          </div>
-
           <!-- 结算备注 -->
           <div class="form-item">
             <label class="form-label">结算备注：</label>
@@ -194,7 +179,7 @@ const handleConfirmSettlement = () => {
   </el-drawer>
 
   <el-dialog v-model="dialogVisible">
-    <img style="width: 100%; height: 100%" :src="receiptFiles" alt="Preview Image" />
+    <img style="width: 100%; height: 100%" :src="previewImg" alt="Preview Image" />
   </el-dialog>
 </template>
 

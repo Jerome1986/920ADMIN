@@ -7,7 +7,7 @@ import {
   settlementInfoGetApi,
   settlementManagerSearchApi,
   settlementUpdateApi
-} from '@/api/settlement.ts'
+} from '@/api/settlement'
 import type { SettlementItem, SettlementStatus } from '@/types/Settlement'
 import { ElMessage } from 'element-plus'
 
@@ -34,7 +34,7 @@ const handleSizeChange = (size: number) => {
   if (searchValue.value) {
     searchMaterialGet()
   } else {
-    userListGet(params.value.pageNum, params.value.pageSize)
+    settlementListGet(params.value.pageNum, params.value.pageSize)
   }
 }
 
@@ -44,7 +44,7 @@ const handleCurrentChange = (pageNum: number) => {
   if (searchValue.value) {
     searchMaterialGet()
   } else {
-    userListGet(params.value.pageNum, params.value.pageSize)
+    settlementListGet(params.value.pageNum, params.value.pageSize)
   }
 }
 
@@ -66,12 +66,12 @@ const searchMaterialGet = async () => {
 // 清除搜索
 const handleClearSearch = () => {
   params.value.pageNum = 1
-  userListGet(params.value.pageNum, params.value.pageSize)
+  settlementListGet(params.value.pageNum, params.value.pageSize)
 }
 
 // 店长数据
 const settlementList = ref<SettlementItem[]>([])
-const userListGet = async (pageNum: number, pageSize: number) => {
+const settlementListGet = async (pageNum: number, pageSize: number) => {
   loading.value = true
   const res = await settlementInfoGetApi(pageNum, pageSize)
   console.log(res.data)
@@ -109,7 +109,7 @@ const handleConfirmSettlement = async (data: {
     data.out_trade_no,
     data.userId,
     data.mobile,
-    Number((data.amount * 100).toFixed(2)),
+    Number(data.amount.toFixed(2)),
     data.remark,
     data.receiptFiles,
     data.settlementStatus
@@ -118,14 +118,14 @@ const handleConfirmSettlement = async (data: {
   console.log('结算结果', res)
   if (res.code === 200) {
     ElMessage.success('结算成功')
-    await userListGet(params.value.pageNum, params.value.pageSize)
+    await settlementListGet(params.value.pageNum, params.value.pageSize)
   }
 
   // 关闭抽屉
   handleCloseDrawer()
 }
 
-onMounted(() => userListGet(params.value.pageNum, params.value.pageSize))
+onMounted(() => settlementListGet(params.value.pageNum, params.value.pageSize))
 </script>
 
 <template>

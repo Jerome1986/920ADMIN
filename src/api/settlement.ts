@@ -1,4 +1,4 @@
-import { request } from '@/utils/request.ts'
+import { request } from '@/utils/request'
 import type { SettlementPageResult, SettlementStatus, SettlementUpdate } from '@/types/Settlement'
 
 /**
