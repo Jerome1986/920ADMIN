@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import type { ProductItem } from '@/types/ProductItem'
 import { productTobAllGetApi } from '@/api/product.ts'
 import type { TableInstance } from 'element-plus'
+import { formatAmount } from '@/utils/index'
 
 // 商品列表数据
 const productList = ref<ProductItem[]>([])
@@ -72,13 +73,18 @@ const handleSelectionChange = (selection: ProductItem[]) => {
 // 获取选中 SKU 的价格
 const price = ref(0)
 const getSelectedSkuPrice = (product: ProductItem) => {
+  // console.log('价格', product)
   const skuId = selectedSkuIds.value[product._id || '']
   if (!skuId || !product.skus || product.skus.length === 0) {
-    return product.minPrice || product.currentPrice || 0
+    return formatAmount(product.minPrice ?? 0) || formatAmount(product.currentPrice)
   }
   const sku = product.skus.find((s) => s._id === skuId)
-  price.value = sku?.price || 0
-  return sku?.price || product.minPrice || product.currentPrice || 0
+  price.value = Number(formatAmount(sku?.price ?? 0))
+  return (
+    formatAmount(sku?.price ?? 0) ||
+    formatAmount(product.minPrice ?? 0) ||
+    formatAmount(product.currentPrice)
+  )
 }
 
 // 获取选中 SKU 对应的单位数量
@@ -180,6 +186,7 @@ defineExpose({
   selectedSkuIds,
   productList,
   isLoading,
+  productGet,
   setSelectedProductIds,
   resetProductQuantities,
   setProductQuantities,

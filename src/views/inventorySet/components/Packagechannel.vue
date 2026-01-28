@@ -37,13 +37,12 @@ const rules: FormRules = {
 
 // 打开对话框
 const open = async (data?: InventoryPackage) => {
+  // 等待商品列表加载完成
+  await selectedRef.value?.productGet()
   dialogVisible.value = true
 
   const isEdit = !!data?._id
   dialogTitle.value = isEdit ? '编辑套餐' : '新增套餐'
-
-  // 等待商品列表加载完成
-  await selectedRef.value?.waitForProductList()
 
   if (data) {
     formData.value = {
@@ -57,16 +56,6 @@ const open = async (data?: InventoryPackage) => {
     // 回填已选商品
     const selectedProductIds = data.items.map((item) => item.product_id)
     selectedRef.value?.setSelectedProductIds(selectedProductIds)
-
-    // 回填商品数量和 SKU
-    selectedRef.value?.resetProductQuantities()
-    selectedRef.value?.resetSelectedSkuIds()
-    data.items.forEach((item) => {
-      selectedRef.value?.setProductQuantities(item.product_id, item.quantity)
-      if (item.sku_id) {
-        selectedRef.value?.setSelectedSkuId(item.product_id, item.sku_id)
-      }
-    })
 
     // 保存待回填的商品ID列表，在对话框打开后再设置表格选中状态
     pendingSelectedProductIds.value = selectedProductIds
@@ -87,6 +76,7 @@ const open = async (data?: InventoryPackage) => {
 
 // 对话框打开完成后的回调（此时表格已完全渲染）
 const handleDialogOpened = () => {
+  console.log('打开完毕的回调')
   if (pendingSelectedProductIds.value.length > 0) {
     // 使用 nextTick 确保表格数据已渲染
     nextTick(() => {
@@ -198,6 +188,7 @@ const onSubmit = async () => {
       :title="dialogTitle"
       width="900"
       @opened="handleDialogOpened"
+      :destroy-on-close="false"
     >
       <el-form
         ref="formRef"
