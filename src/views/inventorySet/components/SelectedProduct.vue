@@ -1,15 +1,41 @@
 <script setup lang="ts">
 import { Search } from '@element-plus/icons-vue'
-import { computed, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { ProductItem } from '@/types/ProductItem'
 import { productTobAllGetApi } from '@/api/product.ts'
 import type { TableInstance } from 'element-plus'
-import { formatAmount } from '@/utils/index'
+import { formatAmount } from '@/utils'
+
+// Props 定义
+interface Props {
+  selectedProductIds: string[]
+  productQuantities: Record<string, number>
+  selectedSkuIds: Record<string, string>
+  searchKeyword: string
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  selectedProductIds: () => [],
+  productQuantities: () => ({}),
+  selectedSkuIds: () => ({}),
+  searchKeyword: ''
+})
+
+// Emits 定义
+const emits = defineEmits<{
+  'update:selectedProductIds': [value: string[]]
+  'update:productQuantities': [value: Record<string, number>]
+  'update:selectedSkuIds': [value: Record<string, string>]
+  'update:searchKeyword': [value: string]
+  selectionChange: [selection: ProductItem[]]
+  quantityChange: [productId: string, quantity: number]
+  skuChange: [productId: string, skuId: string]
+  searchChange: [keyword: string]
+}>()
 
 // 商品列表数据
 const productList = ref<ProductItem[]>([])
 const isLoading = ref(false)
-let productLoadPromise: Promise<void> | null = null
 
 const productGet = async () => {
   isLoading.value = true
@@ -21,65 +47,62 @@ const productGet = async () => {
   }
 }
 
-// 保存加载 Promise，用于等待
-productLoadPromise = productGet()
+onMounted(() => productGet())
 
 // 表格 ref
 const productTableRef = ref<TableInstance>()
 
-// 已选中的商品ID列表
-const selectedProductIds = ref<string[]>([])
-
-// 商品数量映射 { product_id: quantity }
-const productQuantities = ref<Record<string, number>>({})
-
-// SKU 选择映射 { product_id: sku_id }
-const selectedSkuIds = ref<Record<string, string>>({})
+// 标志：是否正在程序化更新选中状态
+const isUpdatingSelection = ref(false)
 
 // 搜索商品
-const searchKeyword = ref('')
 const filteredProductList = computed(() => {
-  if (!searchKeyword.value) {
+  if (!props.searchKeyword) {
     return productList.value
   }
   return productList.value.filter((product) =>
-    product.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
+    product.name.toLowerCase().includes(props.searchKeyword.toLowerCase())
   )
 })
 
 // 处理商品选择变化
 const handleSelectionChange = (selection: ProductItem[]) => {
-  console.log('选择了')
+  // 如果正在程序化更新选中状态，跳过以避免循环
+  if (isUpdatingSelection.value) return
+
   const newSelectedIds = selection.map((item) => item._id || '')
 
   // 为新选中的商品设置默认数量和默认SKU
+  const updatedQuantities = { ...props.productQuantities }
+  const updatedSkuIds = { ...props.selectedSkuIds }
+
   newSelectedIds.forEach((id) => {
-    if (!productQuantities.value[id]) {
-      productQuantities.value[id] = 1
+    if (!updatedQuantities[id]) {
+      updatedQuantities[id] = 1
     }
 
     // 自动选择第一个 SKU
-    if (!selectedSkuIds.value[id]) {
+    if (!updatedSkuIds[id]) {
       const product = productList.value.find((p) => p._id === id)
       if (product?.skus && product.skus.length > 0 && product.skus[0]) {
-        selectedSkuIds.value[id] = product.skus[0]._id || ''
+        updatedSkuIds[id] = product.skus[0]._id || ''
       }
     }
   })
 
-  selectedProductIds.value = newSelectedIds
+  // 更新父组件状态
+  emits('update:selectedProductIds', newSelectedIds)
+  emits('update:productQuantities', updatedQuantities)
+  emits('update:selectedSkuIds', updatedSkuIds)
 }
 
 // 获取选中 SKU 的价格
-const price = ref(0)
 const getSelectedSkuPrice = (product: ProductItem) => {
-  // console.log('价格', product)
-  const skuId = selectedSkuIds.value[product._id || '']
+  const skuId = props.selectedSkuIds[product._id || '']
   if (!skuId || !product.skus || product.skus.length === 0) {
     return formatAmount(product.minPrice ?? 0) || formatAmount(product.currentPrice)
   }
   const sku = product.skus.find((s) => s._id === skuId)
-  price.value = Number(formatAmount(sku?.price ?? 0))
   return (
     formatAmount(sku?.price ?? 0) ||
     formatAmount(product.minPrice ?? 0) ||
@@ -88,11 +111,10 @@ const getSelectedSkuPrice = (product: ProductItem) => {
 }
 
 // 获取选中 SKU 对应的单位数量
-const unit_count = ref(0)
 const getSelectedSkuUnitCount = (product?: ProductItem): number => {
   if (!product?._id) return 0
 
-  const skuId = selectedSkuIds.value[product._id]
+  const skuId = props.selectedSkuIds[product._id]
   if (!skuId) return 0
 
   const skus = product.skus
@@ -101,104 +123,79 @@ const getSelectedSkuUnitCount = (product?: ProductItem): number => {
   const sku = skus.find((s) => s._id === skuId)
   if (!sku?.unit_count) return 0
 
-  const quantity = productQuantities.value[product._id] ?? 0
-  unit_count.value = sku.unit_count * quantity
+  const quantity = props.productQuantities[product._id] ?? 0
   return sku.unit_count * quantity
 }
 
-// 设置已选择的商品函数
-const setSelectedProductIds = (val: string[]) => {
-  selectedProductIds.value = val
+// 处理数量变化
+const handleQuantityChange = (productId: string, quantity: number) => {
+  const updatedQuantities = { ...props.productQuantities }
+  updatedQuantities[productId] = quantity
+  emits('update:productQuantities', updatedQuantities)
+  emits('quantityChange', productId, quantity)
 }
 
-// 重置商品数量
-const resetProductQuantities = () => {
-  productQuantities.value = {}
+// 处理 SKU 变化
+const handleSkuChange = (productId: string, skuId: string) => {
+  const updatedSkuIds = { ...props.selectedSkuIds }
+  updatedSkuIds[productId] = skuId
+  emits('update:selectedSkuIds', updatedSkuIds)
+  emits('skuChange', productId, skuId)
 }
 
-// 回填商品数量
-const setProductQuantities = (id: string, quantity: number) => {
-  productQuantities.value[id] = quantity
+// 处理搜索变化
+const handleSearchChange = (keyword: string) => {
+  emits('update:searchKeyword', keyword)
+  emits('searchChange', keyword)
 }
 
-// 设置 SKU ID
-const setSelectedSkuId = (productId: string, skuId: string) => {
-  selectedSkuIds.value[productId] = skuId
-}
+// 更新表格选中状态的函数
+const updateTableSelection = (selectedIds: string[]) => {
+  if (!productTableRef.value || productList.value.length === 0) return
 
-// 重置 SKU 选择
-const resetSelectedSkuIds = () => {
-  selectedSkuIds.value = {}
-}
+  // 设置标志，避免触发 selection-change 事件
+  isUpdatingSelection.value = true
 
-// 重置所有值
-const reset = () => {
-  selectedProductIds.value = []
-  productQuantities.value = {}
-  selectedSkuIds.value = {}
-}
-
-// 重置搜索
-const resetSearchKeyword = () => {
-  searchKeyword.value = ''
-}
-
-// 设置表格选中状态（用于编辑时回填）
-const setTableSelection = (productIds: string[]) => {
-  if (!productTableRef.value) return
-
-  productTableRef.value.clearSelection()
-  productIds.forEach((productId) => {
-    const product = productList.value.find((p) => p._id === productId)
-    if (product && productTableRef.value) {
-      productTableRef.value.toggleRowSelection(product, true)
-    }
-  })
-}
-
-// 清空表格选中状态
-const clearTableSelection = () => {
-  if (productTableRef.value) {
+  try {
     productTableRef.value.clearSelection()
+    selectedIds.forEach((productId) => {
+      const product = productList.value.find((p) => p._id === productId)
+      if (product) {
+        productTableRef.value!.toggleRowSelection(product, true)
+      }
+    })
+  } finally {
+    // 重置标志
+    isUpdatingSelection.value = false
   }
 }
 
-// 等待商品列表加载完成
-const waitForProductList = async () => {
-  // 如果加载 Promise 存在，等待它完成
-  if (productLoadPromise) {
-    await productLoadPromise
-    // 确保数据已经赋值
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
+// 监听 props 变化，更新表格选中状态
+watch(
+  () => props.selectedProductIds,
+  (newIds) => {
+    updateTableSelection(newIds)
+  },
+  { immediate: true }
+)
 
-  // 如果数据还是空的，等待 loading 完成
-  if (productList.value.length === 0 && isLoading.value) {
-    while (isLoading.value) {
-      await new Promise((resolve) => setTimeout(resolve, 50))
+// 商品列表加载完成后，更新选中状态
+watch(
+  () => productList.value.length,
+  (length) => {
+    if (length > 0 && props.selectedProductIds.length > 0) {
+      nextTick(() => {
+        updateTableSelection(props.selectedProductIds)
+      })
     }
   }
-}
+)
 
+// 暴露给父组件的数据和方法
 defineExpose({
-  selectedProductIds,
-  productQuantities,
-  selectedSkuIds,
   productList,
   isLoading,
-  productGet,
-  setSelectedProductIds,
-  resetProductQuantities,
-  setProductQuantities,
-  setSelectedSkuId,
-  unit_count,
-  price,
-  resetSelectedSkuIds,
-  reset,
-  resetSearchKeyword,
-  setTableSelection,
-  clearTableSelection,
-  waitForProductList
+  productGet
 })
 </script>
 
@@ -209,10 +206,11 @@ defineExpose({
       <!-- 搜索栏 -->
       <div class="search-bar">
         <el-input
-          v-model="searchKeyword"
+          :model-value="searchKeyword"
           placeholder="搜索商品名称"
           clearable
           :prefix-icon="Search"
+          @update:model-value="handleSearchChange"
         />
         <div class="selected-count">
           已选择 <span class="count">{{ selectedProductIds.length }}</span> 个商品
@@ -243,10 +241,11 @@ defineExpose({
             <template #default="{ row }">
               <el-select
                 v-if="row.skus && row.skus.length > 0"
-                v-model="selectedSkuIds[row._id]"
+                :model-value="selectedSkuIds[row._id] || ''"
                 placeholder="请选择规格"
                 size="small"
                 style="width: 120px"
+                @change="(skuId: string) => handleSkuChange(row._id, skuId)"
               >
                 <el-option
                   v-for="sku in row.skus"
@@ -256,7 +255,9 @@ defineExpose({
                 >
                   <div style="display: flex; justify-content: space-between; align-items: center">
                     <span>{{ sku.attrs.value }}</span>
-                    <span style="color: #f56c6c; font-size: 12px">¥{{ sku.price }}</span>
+                    <span style="color: #f56c6c; font-size: 12px"
+                      >¥{{ formatAmount(sku.price) }}</span
+                    >
                   </div>
                 </el-option>
               </el-select>
@@ -271,12 +272,13 @@ defineExpose({
           <el-table-column label="数量" min-width="150" align="center">
             <template #default="{ row }">
               <el-input-number
-                v-model="productQuantities[row._id]"
+                :model-value="productQuantities[row._id] || 1"
                 :min="1"
                 :max="9999"
                 :step="1"
                 size="small"
                 controls-position="right"
+                @change="(quantity: number) => handleQuantityChange(row._id, quantity)"
               />
             </template>
           </el-table-column>
